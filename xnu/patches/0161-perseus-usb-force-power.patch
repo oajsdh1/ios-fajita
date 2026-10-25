@@ -1,6 +1,6 @@
 --- a/bsd/dev/sweet_usb.c
 +++ b/bsd/dev/sweet_usb.c
-@@ -25,6 +25,7 @@ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+@@ -26,6 +26,7 @@
  #define GCC_PA                  0x00100000
  #define GCC_SIZE                0x00090000
  #define GCC_USB30_PRIM_GDSCR    0x0f004         /* bit 31: power on */
@@ -8,7 +8,7 @@
  #define CBCR_CLK_OFF            (1u << 31)
  
  static const struct {
-@@ -72,6 +73,9 @@ usb_rd(vm_offset_t base, uint32_t off)
+@@ -54,6 +54,13 @@
  	return v;
  }
  
@@ -22,20 +22,18 @@
  void
  sweet_usb_probe(void)
  {
-@@ -99,10 +103,34 @@ sweet_usb_probe(void)
- 	for (unsigned i = 0; i < sizeof(usb_cbcr) / sizeof(usb_cbcr[0]); i++) {
+@@ -76,6 +76,45 @@
  		cbcr[i] = usb_rd(gcc, usb_cbcr[i].off);
  		printf("SWEET USB: clk %-12s CBCR 0x%08x (%s)\n", usb_cbcr[i].name, cbcr[i],
  		    (cbcr[i] & CBCR_CLK_OFF) ? "off" : "on");
- 	}
-+
++	}
 +	/*
 +	 * perseus (Mi MIX 3): Xiaomi's ABL gates the USB30_PRIM GDSC and the
 +	 * branch clocks before handing off (OnePlus's ABL leaves them on, which
-+	 * is what the original probe assumed). The controller itself is intact -
-+	 * fastboot used it seconds ago - so re-enabling the domain and the
-+	 * branches is enough; the RCG parent config persists. Gated behind
-+	 * sweetusbforce=0 to keep the read-only behaviour available.
++	 * is what the original probe assumed). The controller is intact - fastboot
++	 * used it seconds ago - so re-enabling the domain and branches suffices;
++	 * the RCG parent config persists. sweetusbforce=0 keeps the read-only
++	 * behaviour available.
 +	 */
 +	int force = 1;
 +	PE_parse_boot_argn("sweetusbforce", &force, sizeof(force));
@@ -43,7 +41,7 @@
 +		if (!(gdscr & (1u << 31))) {
 +			printf("SWEET USB: forcing GDSC usb30_prim on\n");
 +			usb_wr(gcc, GCC_USB30_PRIM_GDSCR, gdscr & ~GDSC_SW_COLLAPSE);
-+			for (int t = 0; t < 100000; t++) {
++			for (int t = 0; t < 20000; t++) {
 +				if (usb_rd(gcc, GCC_USB30_PRIM_GDSCR) & (1u << 31)) {
 +					break;
 +				}
@@ -56,11 +54,10 @@
 +		for (unsigned i = 0; i < sizeof(usb_cbcr) / sizeof(usb_cbcr[0]); i++) {
 +			if (usb_rd(gcc, usb_cbcr[i].off) & CBCR_CLK_OFF) {
 +				printf("SWEET USB: forcing clk %s on\n", usb_cbcr[i].name);
-+				usb_wr(gcc, usb_cbcr[i].off,
-+				    usb_rd(gcc, usb_cbcr[i].off) | 1u);
++				usb_wr(gcc, usb_cbcr[i].off, usb_rd(gcc, usb_cbcr[i].off) | 1u);
 +			}
 +		}
-+		for (int t = 0; t < 100000; t++) {
++		for (int t = 0; t < 20000; t++) {
 +			uint32_t m = usb_rd(gcc, usb_cbcr[0].off);
 +			uint32_t c = usb_rd(gcc, usb_cbcr[3].off);
 +			if (!(m & CBCR_CLK_OFF) && !(c & CBCR_CLK_OFF)) {
@@ -68,6 +65,6 @@
 +			}
 +			delay(10);
 +		}
-+	}
+ 	}
  	/* DWC3 registers need the GDSC, the master clock and the config-NoC path. */
  	clocks_on = (gdscr & (1u << 31)) && !(cbcr[0] & CBCR_CLK_OFF) && !(cbcr[3] & CBCR_CLK_OFF);
