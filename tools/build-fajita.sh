@@ -54,7 +54,10 @@ CMDLINE=${CMDLINE:-"debug=0xc serial=3 cpus=8 sweetsmp=1 keepsyms=1 -noprogress 
 [[ -f "$DTB" ]] || { echo "missing stock DTB: $DTB (unpack the OnePlus boot.img first)" >&2; exit 1; }
 
 mkdir -p shim/out
-python3 tools/mkadt.py "$ADT" --highmem
+# perseus (Mi MIX 3, 8 GB) first boot: conservative low-bank RAM config.
+# The --highmem values in fajita.env were measured on a 10 GB unit whose
+# high bank layout does not exist on the MIX 3.
+python3 tools/mkadt.py "$ADT"
 # Firmware the drivers want before there is a root travels in the payload, not
 # in git: mkpayload.py --blob announces each file as sweetfwN=<pa>:<size>.
 BLOB_ARGS=()
